@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="未来的我">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#faf5ef">
+<title>未来的我</title>
+<style>
+  :root{
+    --bg:#faf5ef; --card:#fffdfa; --ink:#3b2f2a; --soft:#9a8a80;
+    --rose:#c9736b; --rose-dark:#a8564f; --line:#eadfd4; --gold:#c9a15a;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;line-height:1.6}
+  .wrap{max-width:480px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-family:"Songti SC","SimSun",serif;font-size:30px;margin:0;letter-spacing:4px;text-align:center}
+  .sub{text-align:center;color:var(--soft);font-size:14px;margin:4px 0 20px}
+  .stats{display:flex;gap:10px;margin-bottom:18px}
+  .stat{flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 6px;text-align:center}
+  .stat b{display:block;font-size:22px;color:var(--rose-dark);font-family:Georgia,serif}
+  .stat span{font-size:12px;color:var(--soft)}
+
+  .frame{position:relative;aspect-ratio:3/4;border-radius:20px;overflow:hidden;background:#e9ddd1;
+    box-shadow:0 12px 32px rgba(120,80,60,.18)}
+  .frame img{width:100%;height:100%;object-fit:cover;display:block}
+  .tiles{position:absolute;inset:0;display:grid}
+  .tile{background:rgba(250,243,236,.55);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
+    border:.5px solid rgba(255,255,255,.35);transition:opacity 1.2s ease, transform 1.2s ease}
+  .tile.off{opacity:0;transform:scale(1.08);pointer-events:none}
+  .frame.done{animation:glow 2.4s ease}
+  @keyframes glow{0%{box-shadow:0 0 0 0 rgba(201,161,90,.9)}60%{box-shadow:0 0 0 22px rgba(201,161,90,0)}100%{box-shadow:0 12px 32px rgba(120,80,60,.18)}}
+
+  .cap{text-align:center;margin:14px 0 4px;font-size:17px;font-family:"Songti SC","SimSun",serif}
+  .prog{text-align:center;color:var(--soft);font-size:13px;margin-bottom:16px}
+  button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
+  .main-btn{display:block;width:100%;padding:16px;border-radius:999px;background:var(--rose);color:#fff;
+    font-size:18px;letter-spacing:2px;box-shadow:0 6px 16px rgba(201,115,107,.35)}
+  .main-btn:active{background:var(--rose-dark);transform:translateY(1px)}
+  .main-btn.done{background:#e6dcd2;color:var(--soft);box-shadow:none}
+  .undo{display:block;margin:8px auto 0;font-size:13px;color:var(--soft);text-decoration:underline}
+
+  h2{font-size:15px;color:var(--soft);font-weight:normal;margin:34px 0 10px;letter-spacing:2px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .thumb{position:relative;aspect-ratio:3/4;border-radius:12px;overflow:hidden;background:#e9ddd1;padding:0}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb.locked img{filter:blur(16px);transform:scale(1.25)}
+  .thumb.current img{filter:blur(7px);transform:scale(1.15)}
+  .thumb .tag{position:absolute;left:0;right:0;bottom:0;padding:4px;font-size:11px;text-align:center;
+    color:#fff;background:linear-gradient(transparent,rgba(60,40,30,.6))}
+  .thumb.add{border:1.5px dashed #d5c5b6;background:none;color:var(--soft);font-size:13px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .thumb.add i{font-style:normal;font-size:26px;line-height:1}
+
+  .empty{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 20px;text-align:center}
+  .empty p{margin:0 0 10px;font-size:15px}
+  .empty .small{color:var(--soft);font-size:13px;text-align:left}
+
+  dialog{border:none;border-radius:20px;padding:22px;width:min(92vw,420px);background:var(--card);color:var(--ink)}
+  dialog::backdrop{background:rgba(50,35,28,.55)}
+  dialog h3{margin:0 0 14px;font-family:"Songti SC","SimSun",serif;font-size:19px;text-align:center}
+  label{display:block;font-size:13px;color:var(--soft);margin:12px 0 4px}
+  input[type=text],select{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+  .row{display:flex;gap:10px;margin-top:18px}
+  .row button{flex:1;padding:12px;border-radius:999px}
+  .ok{background:var(--rose);color:#fff}
+  .ghost{background:#f0e7de}
+  .danger{color:#b34a3f;font-size:13px;text-decoration:underline;display:block;margin:14px auto 0}
+  .pair{display:flex;gap:8px}
+  .pair figure{flex:1;margin:0;text-align:center;font-size:12px;color:var(--soft)}
+  .pair img,.pair .ph{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block}
+  .pair .ph{border:1.5px dashed #d5c5b6;display:flex;align-items:center;justify-content:center;padding:8px}
+  .msg{text-align:center;font-size:14px;margin:12px 0 0}
+  .gold{color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>未来的我</h1>
+  <div class="sub">每练一次，那个你就清楚一点</div>
+  <div id="app"></div>
+</div>
+
+<dialog id="dlgAdd">
+  <h3>放一张未来的照片</h3>
+  <label>照片（想穿的衣服、想拍的照片、瘦下来的自己）</label>
+  <input type="file" id="fImg" accept="image/*">
+  <label>给它起个名字</label>
+  <input type="text" id="fTitle" maxlength="30" placeholder="比如：穿那条白裙子去海边">
+  <label>练几次擦干净</label>
+  <select id="fNeed">
+    <option value="6">6 次</option>
+    <option value="9" selected>9 次</option>
+    <option value="12">12 次</option>
+    <option value="16">16 次</option>
+    <option value="20">20 次</option>
+  </select>
+  <div class="row">
+    <button class="ghost" id="addCancel">取消</button>
+    <button class="ok" id="addOk">放进相册</button>
+  </div>
+</dialog>
+
+<dialog id="dlgView">
+  <h3 id="vTitle"></h3>
+  <div id="vBody"></div>
+  <input type="file" id="fReal" accept="image/*" hidden>
+  <div class="row">
+    <button class="ghost" id="vClose">关闭</button>
+    <button class="ok" id="vReal" hidden>上传现实版</button>
+  </div>
+  <button class="danger" id="vDel">删除这张</button>
+</dialog>
+
+<script>
+const GRID = {6:[2,3], 9:[3,3], 12:[3,4], 16:[4,4], 20:[4,5]};
+let state = {cards:[], log:[], last:null};
+let viewing = null, justDone = null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- 存储 ---------- */
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('future-me', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function load(){
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const q = db.transaction('kv').objectStore('kv').get('state');
+    q.onsuccess = () => res(q.result || null);
+    q.onerror = () => rej(q.error);
+  });
+}
+async function save(){
+  const db = await idb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(state, 'state');
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+/* ---------- 工具 ---------- */
+function dayStr(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+const today = () => dayStr(new Date());
+function weekCount(){
+  const d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const mon = dayStr(d);
+  return state.log.filter(x => x >= mon).length;
+}
+const isDone = c => c.done.length >= c.need;
+const currentCard = () => state.cards.find(c => !isDone(c)) || null;
+
+function readImage(file){
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onerror = () => rej(fr.error);
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => rej(new Error('图片读不出来'));
+      img.onload = () => {
+        const k = Math.min(1, 1200 / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        res(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ---------- 画面 ---------- */
+function render(){
+  const cur = currentCard();
+  const did = state.log.includes(today());
+  let h = '';
+
+  if (!state.cards.length){
+    h += `<div class="empty">
+      <p>相册还是空的。先放一张你最想变成的样子。</p>
+      <div class="small">
+        👗 想穿的那件衣服的图<br>
+        📸 想拍的那种照片<br>
+        ✨ 用豆包、即梦把自己的照片生成一张瘦下来的样子
+      </div>
+      <button class="main-btn" style="margin-top:18px" onclick="openAdd()">放第一张</button>
+    </div>`;
+    $('app').innerHTML = h;
+    return;
+  }
+
+  const left = cur ? cur.need - cur.done.length : 0;
+  h += `<div class="stats">
+    <div class="stat"><b>${state.log.length}</b><span>一共练了</span></div>
+    <div class="stat"><b>${weekCount()}</b><span>这周练了</span></div>
+    <div class="stat"><b>${cur ? left : '✓'}</b><span>${cur ? '再练几次看清' : '全部看清'}</span></div>
+  </div>`;
+
+  const show = cur || state.cards[state.cards.length - 1];
+  const [cols, rows] = GRID[show.need] || [3,3];
+  let tiles = '';
+  for (let i = 0; i < show.need; i++)
+    tiles += `<div class="tile${show.done.includes(i) ? ' off' : ''}" data-i="${i}"></div>`;
+  h += `<div class="frame${justDone === show.id ? ' done' : ''}" id="frame">
+    <img src="${show.img}" alt="">
+    <div class="tiles" style="grid-template-columns:repeat(${cols},1fr);grid-template-rows:repeat(${rows},1fr)">${tiles}</div>
+  </div>
+  <div class="cap">${esc(show.title)}</div>
+  <div class="prog">${cur ? `已擦掉 ${show.done.length} / ${show.need} 块` : '<span class="gold">全部擦干净了，再放几张新的吧</span>'}</div>`;
+
+  h += did
+    ? `<button class="main-btn done" disabled>今天已经擦过一块</button>
+       <button class="undo" onclick="undo()">点错了，撤销</button>`
+    : `<button class="main-btn" onclick="checkIn()">今天练了，擦一块</button>`;
+
+  h += `<h2>未来相册</h2><div class="grid">`;
+  for (const c of state.cards){
+    const cls = isDone(c) ? 'open' : (cur && c.id === cur.id ? 'current' : 'locked');
+    const tag = isDone(c) ? (c.real ? '已兑现 ✓' : '看清了，去兑现') : (cls === 'current' ? `${c.done.length}/${c.need}` : '🔒 排队中');
+    h += `<button class="thumb ${cls}" onclick="openView('${c.id}')"><img src="${c.img}" alt=""><span class="tag">${tag}</span></button>`;
+  }
+  h += `<button class="thumb add" onclick="openAdd()"><i>＋</i>再放一张</button></div>`;
+  $('app').innerHTML = h;
+}
+
+/* ---------- 打卡 ---------- */
+async function checkIn(){
+  const t = today();
+  if (state.log.includes(t)) return;
+  state.log.push(t);
+  const cur = currentCard();
+  state.last = {date:t, cardId:null, tile:null};
+  if (cur){
+    const rest = [];
+    for (let i = 0; i < cur.need; i++) if (!cur.done.includes(i)) rest.push(i);
+    const pick = rest[Math.floor(Math.random() * rest.length)];
+    state.last = {date:t, cardId:cur.id, tile:pick};
+    // 先让这一块在眼前慢慢化开，再重画
+    const el = document.querySelector(`.tile[data-i="${pick}"]`);
+    if (el) el.classList.add('off');
+    cur.done.push(pick);
+    if (isDone(cur)){ cur.unlockedAt = t; justDone = cur.id; }
+    await save();
+    setTimeout(() => {
+      render();
+      if (justDone){ const id = justDone; justDone = null; setTimeout(() => openView(id, true), 900); }
+    }, 1300);
+    return;
+  }
+  await save();
+  render();
+}
+
+async function undo(){
+  const t = today();
+  state.log = state.log.filter(x => x !== t);
+  const l = state.last;
+  if (l && l.date === t && l.cardId){
+    const c = state.cards.find(x => x.id === l.cardId);
+    if (c){ c.done = c.done.filter(i => i !== l.tile); c.unlockedAt = null; }
+  }
+  state.last = null;
+  await save();
+  render();
+}
+
+/* ---------- 添加 ---------- */
+function openAdd(){
+  $('fImg').value = ''; $('fTitle').value = ''; $('fNeed').value = '9';
+  $('dlgAdd').showModal();
+}
+$('addCancel').onclick = () => $('dlgAdd').close();
+$('addOk').onclick = async () => {
+  const f = $('fImg').files[0];
+  if (!f){ alert('先选一张照片'); return; }
+  try{
+    const img = await readImage(f);
+    state.cards.push({
+      id: 'c' + Date.now(), title: $('fTitle').value.trim() || '未来的我',
+      need: +$('fNeed').value, done: [], img, real: null, unlockedAt: null
+    });
+    await save();
+    $('dlgAdd').close();
+    render();
+  }catch(e){ alert('这张照片没存进去：' + e.message); }
+};
+
+/* ---------- 查看 ---------- */
+function openView(id, fresh){
+  const c = state.cards.find(x => x.id === id);
+  if (!c) return;
+  viewing = id;
+  $('vTitle').textContent = c.title;
+  let b = '';
+  if (isDone(c)){
+    b += `<div class="pair">
+      <figure><img src="${c.img}" alt="">想象</figure>
+      <figure>${c.real ? `<img src="${c.real}" alt="">` : `<div class="ph">穿上它，拍下来，放在这里</div>`}现实</figure>
+    </div>`;
+    if (fresh) b += `<p class="msg gold">这张你看清了。现在去把它变成真的。</p>`;
+    else if (c.real) b += `<p class="msg">${esc(c.unlockedAt || '')} 看清，已经变成真的了。</p>`;
+    $('vReal').hidden = false;
+    $('vReal').textContent = c.real ? '换一张现实版' : '上传现实版';
+  } else {
+    b += `<p class="msg">还蒙着雾。已擦掉 ${c.done.length} / ${c.need} 块。</p>`;
+    $('vReal').hidden = true;
+  }
+  $('vBody').innerHTML = b;
+  if (!$('dlgView').open) $('dlgView').showModal();
+}
+$('vClose').onclick = () => $('dlgView').close();
+$('vReal').onclick = () => { $('fReal').value = ''; $('fReal').click(); };
+$('fReal').onchange = async () => {
+  const f = $('fReal').files[0];
+  const c = state.cards.find(x => x.id === viewing);
+  if (!f || !c) return;
+  try{
+    c.real = await readImage(f);
+    await save();
+    render(); openView(c.id);
+  }catch(e){ alert('这张照片没存进去：' + e.message); }
+};
+$('vDel').onclick = async () => {
+  if (!confirm('删掉这张？擦掉的进度也会一起没了。')) return;
+  state.cards = state.cards.filter(x => x.id !== viewing);
+  await save();
+  $('dlgView').close();
+  render();
+};
+
+load().then(s => { if (s) state = s; render(); })
+      .catch(e => { $('app').innerHTML = '<div class="empty"><p>这个浏览器存不了数据，换 Chrome 或 Edge 打开试试。</p></div>'; });
+</script>
+</body>
+</html>
