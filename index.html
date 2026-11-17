@@ -22,10 +22,9 @@
   .sub{text-align:center;color:var(--soft);font-size:14px;margin:4px 0 18px}
   button{font:inherit;color:inherit;cursor:pointer;border:none;background:none}
 
-  .frame{position:relative;aspect-ratio:3/4;border-radius:22px;overflow:hidden;background:#e9ddd1;
+  .frame{position:relative;border-radius:22px;overflow:hidden;background:#e9ddd1;
     box-shadow:0 14px 36px rgba(120,80,60,.2)}
-  .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-  #imgFuture{transition:opacity 1.4s ease}
+  .frame canvas{display:block;width:100%;height:auto}
   .frame .pct{position:absolute;top:12px;right:12px;padding:3px 12px;border-radius:999px;font-size:13px;
     color:#fff;background:rgba(60,40,30,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .frame .flash{position:absolute;left:0;right:0;bottom:0;padding:40px 16px 18px;text-align:center;color:#fff;
@@ -34,6 +33,14 @@
   .frame.flashing .flash{opacity:1}
   .frame.flashing{animation:glow 4s ease}
   @keyframes glow{0%{box-shadow:0 0 0 0 rgba(201,161,90,.95)}40%{box-shadow:0 0 0 20px rgba(201,161,90,0)}100%{box-shadow:0 14px 36px rgba(120,80,60,.2)}}
+
+  /* 框身体 */
+  .tip{font-size:14px;margin:0 0 12px}
+  .box{position:absolute;border:2px dashed #fff;box-shadow:0 0 0 9999px rgba(40,25,20,.4);border-radius:6px}
+  .h{position:absolute;width:38px;height:38px;border-radius:50%;background:#fff;border:4px solid var(--rose);
+    touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+  .h.tl{left:-19px;top:-19px}
+  .h.br{right:-19px;bottom:-19px}
 
   .bar{margin:18px 4px 6px}
   .bar .ends{display:flex;justify-content:space-between;font-size:13px;color:var(--soft)}
@@ -47,9 +54,10 @@
   .hint.good{color:var(--gold)}
 
   .main-btn{display:block;width:100%;padding:16px;border-radius:999px;background:var(--rose);color:#fff;
-    font-size:18px;letter-spacing:2px;box-shadow:0 6px 16px rgba(201,115,107,.35)}
+    font-size:18px;letter-spacing:2px;box-shadow:0 6px 16px rgba(201,115,107,.35);margin-top:12px}
   .main-btn:active{background:var(--rose-dark);transform:translateY(1px)}
   .main-btn.done{background:#e6dcd2;color:var(--soft);box-shadow:none}
+  .main-btn.second{background:#f0e7de;color:var(--ink);box-shadow:none}
   .link{display:block;margin:10px auto 0;font-size:13px;color:var(--soft);text-decoration:underline}
 
   .days{display:flex;justify-content:space-between;margin:26px 2px 0}
@@ -61,10 +69,6 @@
   .empty{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 20px;text-align:center}
   .empty p{margin:0 0 10px;font-size:15px}
   .empty .small{color:var(--soft);font-size:13px;text-align:left}
-
-  .pair{display:flex;gap:8px;margin-top:18px}
-  .pair figure{flex:1;margin:0;text-align:center;font-size:12px;color:var(--soft)}
-  .pair img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;display:block}
 
   dialog{border:none;border-radius:20px;padding:22px;width:min(92vw,420px);background:var(--card);color:var(--ink)}
   dialog::backdrop{background:rgba(50,35,28,.55)}
@@ -81,7 +85,7 @@
 <body>
 <div class="wrap">
   <h1>未来的我</h1>
-  <div class="sub">每练一次，就往那个你靠近一点</div>
+  <div class="sub">每练一次，照片里的你就瘦一点</div>
   <div id="app"></div>
 </div>
 
@@ -89,9 +93,13 @@
   <h3 id="dTitle">开始</h3>
   <label>现在的我（一张全身照）</label>
   <input type="file" id="fNow" accept="image/*">
-  <label>未来的我（想变成的样子）</label>
-  <input type="file" id="fFuture" accept="image/*">
-  <label>一共练多少次变完</label>
+  <label>最后想瘦多少</label>
+  <select id="fAmount">
+    <option value="0.14">瘦一点点</option>
+    <option value="0.24" selected>瘦一圈</option>
+    <option value="0.34">瘦很多</option>
+  </select>
+  <label>一共练多少次瘦到位</label>
   <select id="fTarget">
     <option value="20">20 次</option>
     <option value="30" selected>30 次</option>
@@ -101,16 +109,19 @@
   <div class="note" id="dNote"></div>
   <div class="row">
     <button class="ghost" id="dCancel">取消</button>
-    <button class="ok" id="dOk">开始变</button>
+    <button class="ok" id="dOk">下一步</button>
   </div>
 </dialog>
-<input type="file" id="fReal" accept="image/*" hidden>
 
 <script>
-let state = null;       // {now, future, target, start, log:[], doneAt, real}
-let dlgMode = 'new';    // new | edit | next
+let state = null;       // {now, box:{x0,y0,x1,y1}, amount, target, log:[], doneAt}
+let draft = null;       // 设置到一半的东西
+let view = 'main';      // main | adjust
+let preview = false;
 let busy = false;
+let src = null, out = null;   // 原图像素、输出缓冲
 const $ = id => document.getElementById(id);
+const DEFAULT_BOX = {x0:0.2, y0:0.2, x1:0.8, y1:0.95};
 
 /* ---------- 存储 ---------- */
 function idb(){
@@ -124,7 +135,7 @@ function idb(){
 async function load(){
   const db = await idb();
   return new Promise((res, rej) => {
-    const q = db.transaction('kv').objectStore('kv').get('morph');
+    const q = db.transaction('kv').objectStore('kv').get('slim');
     q.onsuccess = () => res(q.result || null);
     q.onerror = () => rej(q.error);
   });
@@ -133,7 +144,7 @@ async function save(){
   const db = await idb();
   return new Promise((res, rej) => {
     const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').put(state, 'morph');
+    tx.objectStore('kv').put(state, 'slim');
     tx.oncomplete = () => res();
     tx.onerror = () => rej(tx.error);
   });
@@ -145,28 +156,93 @@ function dayStr(d){
 }
 const today = () => dayStr(new Date());
 function parseDay(s){ const a = s.split('-').map(Number); return new Date(a[0], a[1]-1, a[2]); }
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
 
+function loadImg(url){
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error('图片读不出来'));
+    img.src = url;
+  });
+}
 function readImage(file){
   return new Promise((res, rej) => {
     const fr = new FileReader();
     fr.onerror = () => rej(fr.error);
-    fr.onload = () => {
-      const img = new Image();
-      img.onerror = () => rej(new Error('图片读不出来'));
-      img.onload = () => {
-        const k = Math.min(1, 1200 / Math.max(img.width, img.height));
+    fr.onload = async () => {
+      try{
+        const img = await loadImg(fr.result);
+        const k = Math.min(1, 1000 / Math.max(img.width, img.height));
         const cv = document.createElement('canvas');
         cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
         cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-        res(cv.toDataURL('image/jpeg', 0.85));
-      };
-      img.src = fr.result;
+        res(cv.toDataURL('image/jpeg', 0.88));
+      }catch(e){ rej(e); }
     };
     fr.readAsDataURL(file);
   });
 }
 
-/* 从打卡记录算出现在变到哪了：
+/* ---------- 把照片变瘦 ---------- */
+async function prepare(url){
+  const img = await loadImg(url);
+  const cv = document.createElement('canvas');
+  cv.width = img.width; cv.height = img.height;
+  const ctx = cv.getContext('2d', {willReadFrequently:true});
+  ctx.drawImage(img, 0, 0);
+  src = {w: cv.width, h: cv.height, px: ctx.getImageData(0, 0, cv.width, cv.height).data};
+  out = null;
+}
+const ss = v => { v = clamp(v, 0, 1); return v * v * (3 - 2 * v); };
+
+/* strength 0 = 原图，1 = 最瘦。框内中间往中线收，框的四条边不动。 */
+function draw(cv, strength, box, amount){
+  if (!src || !cv) return;
+  const w = src.w, h = src.h;
+  if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+  const ctx = cv.getContext('2d');
+  if (!out || out.width !== w || out.height !== h) out = ctx.createImageData(w, h);
+  const s = src.px, d = out.data;
+  d.set(s);
+  const X0 = Math.round(box.x0 * w), X1 = Math.round(box.x1 * w);
+  const Y0 = Math.round(box.y0 * h), Y1 = Math.round(box.y1 * h);
+  const cx = (X0 + X1) / 2, hw = (X1 - X0) / 2, bh = Y1 - Y0;
+  if (strength > 0 && hw > 2 && bh > 2){
+    for (let y = Y0; y < Y1; y++){
+      const t = (y - Y0) / bh;
+      const A = amount * strength * ss(t / 0.2) * ss((1 - t) / 0.2);
+      if (A < 0.001) continue;
+      const row = y * w * 4;
+      for (let x = X0; x < X1; x++){
+        const u = (x + 0.5 - cx) / hw;
+        const k = 1 - u * u;
+        let sx = cx + u * (1 + A * k) * hw - 0.5;
+        if (sx < 0) sx = 0; else if (sx > w - 1) sx = w - 1;
+        const i0 = sx | 0, f = sx - i0, i1 = i0 + 1 < w ? i0 + 1 : i0;
+        const a = row + i0 * 4, b = row + i1 * 4, o = row + x * 4;
+        d[o]   = s[a]   + (s[b]   - s[a])   * f;
+        d[o+1] = s[a+1] + (s[b+1] - s[a+1]) * f;
+        d[o+2] = s[a+2] + (s[b+2] - s[a+2]) * f;
+      }
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+function animate(from, to, ms){
+  return new Promise(res => {
+    const t0 = performance.now();
+    (function step(now){
+      let k = clamp((now - t0) / ms, 0, 1);
+      k = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      draw($('cv'), from + (to - from) * k, state.box, state.amount);
+      if (k < 1) requestAnimationFrame(step); else res();
+    })(t0);
+  });
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* 从打卡记录算出现在瘦到哪了：
    练一天 +1；连着歇到第 3 天起，每天 -0.5；今天还没过完，不算歇。 */
 function calc(){
   const set = new Set(state.log);
@@ -187,13 +263,14 @@ const ratio = () => state.doneAt ? 1 : Math.min(1, calc().pts / state.target);
 
 /* ---------- 画面 ---------- */
 function render(){
+  if (view === 'adjust') return renderAdjust();
   if (!state){
     $('app').innerHTML = `<div class="empty">
-      <p>放两张图：现在的你，和你想变成的你。</p>
+      <p>拍一张现在的全身照放进来。之后每练一次，照片里的你就瘦一点。</p>
       <div class="small">
-        📷 现在的你：随手拍一张全身照<br>
-        ✨ 未来的你：把这张全身照发给豆包或即梦，让它生成一张瘦下来、穿着你想穿的衣服的样子<br>
-        💫 之后每练一次，画面就从前一张往后一张变一点
+        📷 正面站直，手臂稍微离开身体<br>
+        🧱 背景越简单越好，白墙最好<br>
+        👗 穿贴身一点的衣服，变化看得更清楚
       </div>
       <button class="main-btn" style="margin-top:18px" onclick="openDlg('new')">开始</button>
     </div>`;
@@ -206,16 +283,15 @@ function render(){
   const left = Math.ceil(state.target - pts);
 
   let hint = '', cls = '';
-  if (state.doneAt){ hint = '你已经变成未来的你了。'; cls = 'good'; }
+  if (state.doneAt){ hint = '你已经瘦到位了。去拍一张现在的你，开始下一轮。'; cls = 'good'; }
   else if (!state.log.length) hint = '练完第一次，回来点下面的按钮。';
-  else if (!did && gap >= 3){ hint = `已经 ${gap} 天没练，正在往回变。今天练一次就停住。`; cls = 'warn'; }
-  else if (!did && gap === 2){ hint = '已经 2 天没练。明天再不练，就要开始往回变了。'; cls = 'warn'; }
-  else hint = `再练 ${left} 次，就完全变成未来的你。`;
+  else if (!did && gap >= 3){ hint = `已经 ${gap} 天没练，照片里的你正在胖回去。今天练一次就停住。`; cls = 'warn'; }
+  else if (!did && gap === 2){ hint = '已经 2 天没练。明天再不练，就要开始胖回去了。'; cls = 'warn'; }
+  else hint = `再练 ${left} 次，就瘦到位。`;
 
   let h = `<div class="frame" id="frame">
-      <img src="${state.now}" alt="">
-      <img id="imgFuture" src="${state.future}" alt="" style="opacity:${p}">
-      <div class="pct" id="pct">已经变了 ${pct}%</div>
+      <canvas id="cv"></canvas>
+      <div class="pct" id="pct">已经瘦了 ${pct}%</div>
       <div class="flash">这就是你要去的地方</div>
     </div>
     <div class="bar">
@@ -224,21 +300,12 @@ function render(){
     </div>
     <div class="hint ${cls}" id="hint">${hint}</div>`;
 
-  if (state.doneAt){
-    h += `<button class="main-btn" onclick="$('fReal').click()">${state.real ? '换一张现实里的我' : '放一张现实里的我'}</button>
-          <button class="link" onclick="openDlg('next')">开始下一轮</button>`;
-    if (state.real) h += `<div class="pair">
-        <figure><img src="${state.now}" alt="">出发那天</figure>
-        <figure><img src="${state.real}" alt="">现实里的我</figure>
-      </div>`;
-  } else {
-    h += did
-      ? `<button class="main-btn done" disabled>今天已经变过了，明天见</button>
+  if (state.doneAt) h += `<button class="main-btn" onclick="openDlg('next')">开始下一轮</button>`;
+  else h += did
+      ? `<button class="main-btn done" disabled>今天已经瘦过一点了，明天见</button>
          <button class="link" onclick="undo()">点错了，撤销</button>`
       : `<button class="main-btn" onclick="checkIn()">今天练了</button>`;
-  }
 
-  // 最近 14 天
   h += '<div class="days">';
   const d = new Date(); d.setDate(d.getDate() - 13);
   for (let i = 0; i < 14; i++){
@@ -247,32 +314,33 @@ function render(){
     d.setDate(d.getDate() + 1);
   }
   h += '</div>';
-  if (!state.doneAt) h += `<button class="link" style="margin-top:22px" onclick="openDlg('edit')">换照片 / 改次数</button>`;
+  if (!state.doneAt) h += `<button class="link" style="margin-top:22px" onclick="openDlg('edit')">换照片 / 重新框身体</button>`;
   $('app').innerHTML = h;
+  draw($('cv'), p, state.box, state.amount);
 }
 
 /* ---------- 打卡 ---------- */
 async function checkIn(){
   if (busy || state.log.includes(today())) return;
   busy = true;
+  const from = ratio();
   state.log.push(today());
   if (calc().pts >= state.target) state.doneAt = today();
   await save();
+  const to = ratio(), pct = Math.round(to * 100);
 
-  // 先整个闪现成未来的样子，停一下，再退回到新的位置
-  const frame = $('frame'), fut = $('imgFuture');
-  frame.classList.add('flashing');
-  fut.style.opacity = 1;
+  // 先变成最瘦的样子，停一下，再退回到新的位置
+  $('frame').classList.add('flashing');
   $('pct').textContent = '未来的你';
-  setTimeout(() => {
-    const p = ratio(), pct = Math.round(p * 100);
-    fut.style.opacity = p;
-    $('fill').style.width = pct + '%';
-    $('knob').style.left = pct + '%';
-    $('pct').textContent = `已经变了 ${pct}%`;
-    frame.classList.remove('flashing');
-    setTimeout(() => { busy = false; render(); }, 1600);
-  }, state.doneAt ? 1600 : 3200);
+  await animate(from, 1, 1500);
+  await wait(2000);
+  $('frame').classList.remove('flashing');
+  $('fill').style.width = pct + '%';
+  $('knob').style.left = pct + '%';
+  $('pct').textContent = `已经瘦了 ${pct}%`;
+  if (to < 1) await animate(1, to, 1500);
+  busy = false;
+  render();
 }
 
 async function undo(){
@@ -284,49 +352,94 @@ async function undo(){
   render();
 }
 
-/* ---------- 设置 ---------- */
+/* ---------- 设置第一步：选照片 ---------- */
 function openDlg(mode){
-  dlgMode = mode;
-  $('fNow').value = ''; $('fFuture').value = '';
+  $('fNow').value = '';
   $('fTarget').value = String(state && mode === 'edit' ? state.target : 30);
-  $('dTitle').textContent = mode === 'edit' ? '换照片 / 改次数' : (mode === 'next' ? '开始下一轮' : '开始');
-  $('dOk').textContent = mode === 'edit' ? '保存' : '开始变';
-  $('dNote').textContent = mode === 'edit' ? '不换的那张留空就行，进度不会丢。'
-    : (mode === 'next' ? '下一轮从 0 开始。现在的我不选的话，会用你上一轮放的现实照。' : '');
+  $('fAmount').value = String(state && mode === 'edit' ? state.amount : 0.24);
+  $('dTitle').textContent = mode === 'edit' ? '换照片 / 重新框身体' : (mode === 'next' ? '开始下一轮' : '开始');
+  $('dNote').textContent = mode === 'edit' ? '不换照片就留空，进度不会丢。'
+    : (mode === 'next' ? '放一张现在的你，从 0 重新开始。' : '');
+  $('dlg').dataset.mode = mode;
   $('dlg').showModal();
 }
 $('dCancel').onclick = () => $('dlg').close();
 $('dOk').onclick = async () => {
+  const mode = $('dlg').dataset.mode;
+  const f = $('fNow').files[0];
+  if (!f && mode !== 'edit'){ alert('先选一张照片'); return; }
   try{
-    const fn = $('fNow').files[0], ff = $('fFuture').files[0];
-    const target = +$('fTarget').value;
-    if (dlgMode === 'new'){
-      if (!fn || !ff){ alert('两张照片都要选'); return; }
-      state = {now: await readImage(fn), future: await readImage(ff), target, start: today(), log: [], doneAt: null, real: null};
-    } else if (dlgMode === 'edit'){
-      if (fn) state.now = await readImage(fn);
-      if (ff) state.future = await readImage(ff);
-      state.target = target;
-    } else {
-      const now = fn ? await readImage(fn) : (state.real || null);
-      if (!now){ alert('选一张现在的我'); return; }
-      if (!ff){ alert('选一张新的未来的我'); return; }
-      state = {now, future: await readImage(ff), target, start: today(), log: [], doneAt: null, real: null};
-    }
-    await save();
+    const now = f ? await readImage(f) : state.now;
+    draft = {
+      mode, now,
+      box: (!f && state) ? {...state.box} : {...DEFAULT_BOX},
+      amount: +$('fAmount').value, target: +$('fTarget').value
+    };
+    await prepare(now);
     $('dlg').close();
+    view = 'adjust'; preview = false;
     render();
-  }catch(e){ alert('照片没存进去：' + e.message); }
-};
-$('fReal').onchange = async () => {
-  const f = $('fReal').files[0];
-  if (!f) return;
-  try{ state.real = await readImage(f); await save(); render(); }
-  catch(e){ alert('照片没存进去：' + e.message); }
-  $('fReal').value = '';
+  }catch(e){ alert('照片没读进来：' + e.message); }
 };
 
-load().then(s => { state = s; render(); })
+/* ---------- 设置第二步：框身体 ---------- */
+function renderAdjust(){
+  $('app').innerHTML = `
+    <p class="tip">拖两个圆点，把框拉到：<b>上边到肩膀，下边到脚踝，左右比身体各宽出一截</b>。脸不要框进去。</p>
+    <div class="frame" id="adj">
+      <canvas id="cv"></canvas>
+      <div class="box" id="box"><b class="h tl" data-h="tl"></b><b class="h br" data-h="br"></b></div>
+    </div>
+    <button class="main-btn second" id="pv">看看瘦完的样子</button>
+    <button class="main-btn" onclick="confirmAdjust()">就这样，开始</button>
+    <button class="link" onclick="cancelAdjust()">取消</button>`;
+  placeBox();
+  draw($('cv'), 0, draft.box, draft.amount);
+  $('pv').onclick = () => {
+    preview = !preview;
+    $('box').style.display = preview ? 'none' : '';
+    $('pv').textContent = preview ? '回到原图，继续调框' : '看看瘦完的样子';
+    draw($('cv'), preview ? 1 : 0, draft.box, draft.amount);
+  };
+  document.querySelectorAll('.h').forEach(el => {
+    el.onpointerdown = e => { el.setPointerCapture(e.pointerId); e.preventDefault(); };
+    el.onpointermove = e => {
+      if (!el.hasPointerCapture(e.pointerId)) return;
+      const r = $('adj').getBoundingClientRect();
+      const nx = clamp((e.clientX - r.left) / r.width, 0.02, 0.98);
+      const ny = clamp((e.clientY - r.top) / r.height, 0.02, 0.98);
+      const b = draft.box;
+      if (el.dataset.h === 'tl'){ b.x0 = Math.min(nx, b.x1 - 0.15); b.y0 = Math.min(ny, b.y1 - 0.15); }
+      else { b.x1 = Math.max(nx, b.x0 + 0.15); b.y1 = Math.max(ny, b.y0 + 0.15); }
+      placeBox();
+    };
+  });
+}
+function placeBox(){
+  const b = draft.box, el = $('box');
+  el.style.left = (b.x0 * 100) + '%';
+  el.style.top = (b.y0 * 100) + '%';
+  el.style.width = ((b.x1 - b.x0) * 100) + '%';
+  el.style.height = ((b.y1 - b.y0) * 100) + '%';
+}
+async function confirmAdjust(){
+  const keep = draft.mode === 'edit' && state;
+  state = {
+    now: draft.now, box: draft.box, amount: draft.amount, target: draft.target,
+    log: keep ? state.log : [], doneAt: null
+  };
+  if (keep && calc().pts >= state.target) state.doneAt = today();
+  await save();
+  draft = null; view = 'main';
+  render();
+}
+async function cancelAdjust(){
+  draft = null; view = 'main';
+  if (state) await prepare(state.now); else src = null;
+  render();
+}
+
+load().then(async s => { state = s; if (state) await prepare(state.now); render(); })
       .catch(() => { $('app').innerHTML = '<div class="empty"><p>这个浏览器存不了数据，换 Chrome 或 Safari 打开试试。</p></div>'; });
 </script>
 </body>
