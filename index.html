@@ -49,9 +49,10 @@
     background:linear-gradient(90deg,#e0b9a8,var(--rose));transition:width 1.4s ease}
   .knob{position:absolute;top:50%;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--rose);
     transform:translate(-50%,-50%);transition:left 1.4s ease;box-shadow:0 2px 6px rgba(120,80,60,.25)}
-  .hint{text-align:center;font-size:14px;margin:12px 0 16px;min-height:22px}
+  .hint{text-align:center;font-size:14px;margin:12px 0 4px;min-height:22px}
   .hint.warn{color:#b34a3f}
   .hint.good{color:var(--gold)}
+  .last{text-align:center;font-size:12px;color:var(--soft);margin-bottom:8px;min-height:18px}
 
   .main-btn{display:block;width:100%;padding:16px;border-radius:999px;background:var(--rose);color:#fff;
     font-size:18px;letter-spacing:2px;box-shadow:0 6px 16px rgba(201,115,107,.35);margin-top:12px}
@@ -74,7 +75,9 @@
   dialog::backdrop{background:rgba(50,35,28,.55)}
   dialog h3{margin:0 0 6px;font-family:"Songti SC","SimSun",serif;font-size:19px;text-align:center}
   label{display:block;font-size:13px;color:var(--soft);margin:14px 0 4px}
-  input[type=file],select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+  input[type=file],input[type=number],select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;background:#fff;color:var(--ink)}
+  .two{display:flex;gap:10px}
+  .two > div{flex:1}
   .row{display:flex;gap:10px;margin-top:20px}
   .row button{flex:1;padding:12px;border-radius:999px}
   .ok{background:var(--rose);color:#fff}
@@ -85,7 +88,7 @@
 <body>
 <div class="wrap">
   <h1>未来的我</h1>
-  <div class="sub">每练一次，照片里的你就瘦一点</div>
+  <div class="sub">每掉一斤，照片里的你就瘦一点</div>
   <div id="app"></div>
 </div>
 
@@ -93,18 +96,15 @@
   <h3 id="dTitle">开始</h3>
   <label>现在的我（一张全身照）</label>
   <input type="file" id="fNow" accept="image/*">
-  <label>最后想瘦多少</label>
+  <div class="two">
+    <div><label>现在多少斤</label><input type="number" id="fStart" inputmode="decimal" step="0.1" value="140"></div>
+    <div><label>目标多少斤</label><input type="number" id="fGoal" inputmode="decimal" step="0.1" value="110"></div>
+  </div>
+  <label>到目标时，照片里瘦多少</label>
   <select id="fAmount">
     <option value="0.14">瘦一点点</option>
     <option value="0.24" selected>瘦一圈</option>
     <option value="0.34">瘦很多</option>
-  </select>
-  <label>一共练多少次瘦到位</label>
-  <select id="fTarget">
-    <option value="20">20 次</option>
-    <option value="30" selected>30 次</option>
-    <option value="45">45 次</option>
-    <option value="60">60 次</option>
   </select>
   <div class="note" id="dNote"></div>
   <div class="row">
@@ -113,8 +113,18 @@
   </div>
 </dialog>
 
+<dialog id="dw">
+  <h3>今天多少斤</h3>
+  <input type="number" id="fW" inputmode="decimal" step="0.1">
+  <div class="note">早上起床、上完厕所、吃饭前称，每次同一个时间。一周称一两次就够。</div>
+  <div class="row">
+    <button class="ghost" id="wCancel">取消</button>
+    <button class="ok" id="wOk">记下</button>
+  </div>
+</dialog>
+
 <script>
-let state = null;       // {now, box:{x0,y0,x1,y1}, amount, target, log:[], doneAt}
+let state = null;       // {now, box:{x0,y0,x1,y1}, amount, start, goal, weights:[{d,w}], log:[]}
 let draft = null;       // 设置到一半的东西
 let view = 'main';      // main | adjust
 let preview = false;
@@ -132,19 +142,28 @@ function idb(){
     r.onerror = () => rej(r.error);
   });
 }
-async function load(){
-  const db = await idb();
+function getKey(db, key){
   return new Promise((res, rej) => {
-    const q = db.transaction('kv').objectStore('kv').get('slim');
+    const q = db.transaction('kv').objectStore('kv').get(key);
     q.onsuccess = () => res(q.result || null);
     q.onerror = () => rej(q.error);
   });
+}
+async function load(){
+  const db = await idb();
+  const s = await getKey(db, 'slimw');
+  if (s) return s;
+  // 上一版（按练的次数变瘦）放过的照片和框，直接带过来
+  const old = await getKey(db, 'slim');
+  if (old && old.now && old.box)
+    return {now: old.now, box: old.box, amount: old.amount || 0.24, start: 140, goal: 110, weights: [], log: old.log || []};
+  return null;
 }
 async function save(){
   const db = await idb();
   return new Promise((res, rej) => {
     const tx = db.transaction('kv', 'readwrite');
-    tx.objectStore('kv').put(state, 'slim');
+    tx.objectStore('kv').put(state, 'slimw');
     tx.oncomplete = () => res();
     tx.onerror = () => rej(tx.error);
   });
@@ -157,6 +176,7 @@ function dayStr(d){
 const today = () => dayStr(new Date());
 function parseDay(s){ const a = s.split('-').map(Number); return new Date(a[0], a[1]-1, a[2]); }
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const fmt = v => String(Math.round(v * 10) / 10);
 
 function loadImg(url){
   return new Promise((res, rej) => {
@@ -242,31 +262,27 @@ function animate(from, to, ms){
 }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
-/* 从打卡记录算出现在瘦到哪了：
-   练一天 +1；连着歇到第 3 天起，每天 -0.5；今天还没过完，不算歇。 */
-function calc(){
-  const set = new Set(state.log);
-  const t = today();
-  if (!set.size) return {pts:0, gap:0};
-  const d = parseDay([...set].sort()[0]);
-  let pts = 0, gap = 0;
-  for (;;){
-    const s = dayStr(d);
-    if (s > t) break;
-    if (set.has(s)){ pts = Math.min(state.target, pts + 1); gap = 0; }
-    else if (s < t){ gap++; if (gap >= 3) pts = Math.max(0, pts - 0.5); }
-    d.setDate(d.getDate() + 1);
-  }
-  return {pts, gap};
+/* 照片瘦到哪，只看体重：起点体重 = 原图，目标体重 = 最瘦 */
+const curWeight = () => state.weights.length ? state.weights[state.weights.length - 1].w : state.start;
+const ratio = () => clamp((state.start - curWeight()) / (state.start - state.goal), 0, 1);
+function restDays(){
+  if (!state.log.length) return 0;
+  const last = [...state.log].sort().pop();
+  return Math.max(0, Math.round((parseDay(today()) - parseDay(last)) / 86400000) - 1);
 }
-const ratio = () => state.doneAt ? 1 : Math.min(1, calc().pts / state.target);
+function chipText(){
+  const lost = state.start - curWeight();
+  if (lost > 0.04) return `已经瘦了 ${fmt(lost)} 斤`;
+  if (lost < -0.04) return `比出发时重了 ${fmt(-lost)} 斤`;
+  return '出发点';
+}
 
 /* ---------- 画面 ---------- */
 function render(){
   if (view === 'adjust') return renderAdjust();
   if (!state){
     $('app').innerHTML = `<div class="empty">
-      <p>拍一张现在的全身照放进来。之后每练一次，照片里的你就瘦一点。</p>
+      <p>拍一张现在的全身照放进来，填上现在和目标的体重。之后体重每掉一斤，照片里的你就瘦一点。</p>
       <div class="small">
         📷 正面站直，手臂稍微离开身体<br>
         🧱 背景越简单越好，白墙最好<br>
@@ -276,35 +292,35 @@ function render(){
     </div>`;
     return;
   }
-  const {pts, gap} = calc();
-  const p = ratio();
-  const pct = Math.round(p * 100);
+  const p = ratio(), pct = Math.round(p * 100);
+  const cur = curWeight(), left = cur - state.goal;
   const did = state.log.includes(today());
-  const left = Math.ceil(state.target - pts);
+  const rest = restDays();
 
   let hint = '', cls = '';
-  if (state.doneAt){ hint = '你已经瘦到位了。去拍一张现在的你，开始下一轮。'; cls = 'good'; }
-  else if (!state.log.length) hint = '练完第一次，回来点下面的按钮。';
-  else if (!did && gap >= 3){ hint = `已经 ${gap} 天没练，照片里的你正在胖回去。今天练一次就停住。`; cls = 'warn'; }
-  else if (!did && gap === 2){ hint = '已经 2 天没练。明天再不练，就要开始胖回去了。'; cls = 'warn'; }
-  else hint = `再练 ${left} 次，就瘦到位。`;
+  if (left <= 0.04){ hint = `到 ${fmt(state.goal)} 斤了。照片里的你，就是现在的你。`; cls = 'good'; }
+  else if (!did && rest >= 3){ hint = `已经 ${rest} 天没练了。还差 ${fmt(left)} 斤。`; cls = 'warn'; }
+  else hint = `现在 ${fmt(cur)} 斤，还差 ${fmt(left)} 斤。`;
+  const lw = state.weights.length ? state.weights[state.weights.length - 1] : null;
+  const last = lw ? `上次称重：${lw.d.slice(5).replace('-', '/')}　${fmt(lw.w)} 斤` : '还没记过体重，记一次照片才会动';
 
   let h = `<div class="frame" id="frame">
       <canvas id="cv"></canvas>
-      <div class="pct" id="pct">已经瘦了 ${pct}%</div>
-      <div class="flash">这就是你要去的地方</div>
+      <div class="pct" id="pct">${chipText()}</div>
+      <div class="flash">这是 ${fmt(state.goal)} 斤的你</div>
     </div>
     <div class="bar">
-      <div class="ends"><span>现在的我</span><span>未来的我</span></div>
+      <div class="ends"><span>${fmt(state.start)} 斤</span><span>${fmt(state.goal)} 斤</span></div>
       <div class="track"><div class="fill" id="fill" style="width:${pct}%"></div><div class="knob" id="knob" style="left:${pct}%"></div></div>
     </div>
-    <div class="hint ${cls}" id="hint">${hint}</div>`;
+    <div class="hint ${cls}">${hint}</div>
+    <div class="last">${last}</div>`;
 
-  if (state.doneAt) h += `<button class="main-btn" onclick="openDlg('next')">开始下一轮</button>`;
-  else h += did
-      ? `<button class="main-btn done" disabled>今天已经瘦过一点了，明天见</button>
-         <button class="link" onclick="undo()">点错了，撤销</button>`
-      : `<button class="main-btn" onclick="checkIn()">今天练了</button>`;
+  h += did
+    ? `<button class="main-btn done" disabled>今天练过了，明天见</button>`
+    : `<button class="main-btn" onclick="checkIn()">今天练了，看一眼 ${fmt(state.goal)} 斤的我</button>`;
+  h += `<button class="main-btn second" onclick="openWeight()">记体重</button>`;
+  if (did) h += `<button class="link" onclick="undo()">今天没练，点错了</button>`;
 
   h += '<div class="days">';
   const d = new Date(); d.setDate(d.getDate() - 13);
@@ -314,52 +330,75 @@ function render(){
     d.setDate(d.getDate() + 1);
   }
   h += '</div>';
-  if (!state.doneAt) h += `<button class="link" style="margin-top:22px" onclick="openDlg('edit')">换照片 / 重新框身体</button>`;
+  h += `<button class="link" style="margin-top:22px" onclick="openDlg('edit')">换照片 / 改体重目标 / 重新框身体</button>`;
   $('app').innerHTML = h;
   draw($('cv'), p, state.box, state.amount);
 }
 
-/* ---------- 打卡 ---------- */
-async function checkIn(){
-  if (busy || state.log.includes(today())) return;
-  busy = true;
-  const from = ratio();
-  state.log.push(today());
-  if (calc().pts >= state.target) state.doneAt = today();
-  await save();
-  const to = ratio(), pct = Math.round(to * 100);
-
-  // 先变成最瘦的样子，停一下，再退回到新的位置
+/* 闪现成目标体重的样子，停一下，再落到 to 的位置 */
+async function flashTo(from, to){
   $('frame').classList.add('flashing');
-  $('pct').textContent = '未来的你';
+  $('pct').textContent = `${fmt(state.goal)} 斤的你`;
   await animate(from, 1, 1500);
   await wait(2000);
   $('frame').classList.remove('flashing');
+  const pct = Math.round(to * 100);
   $('fill').style.width = pct + '%';
   $('knob').style.left = pct + '%';
-  $('pct').textContent = `已经瘦了 ${pct}%`;
+  $('pct').textContent = chipText();
   if (to < 1) await animate(1, to, 1500);
+}
+
+/* ---------- 今天练了 ---------- */
+async function checkIn(){
+  if (busy || state.log.includes(today())) return;
+  busy = true;
+  state.log.push(today());
+  await save();
+  const p = ratio();
+  if (p < 1) await flashTo(p, p);
   busy = false;
   render();
 }
-
 async function undo(){
   if (busy) return;
   const t = today();
   state.log = state.log.filter(x => x !== t);
-  if (state.doneAt === t) state.doneAt = null;
   await save();
   render();
 }
 
-/* ---------- 设置第一步：选照片 ---------- */
+/* ---------- 记体重 ---------- */
+function openWeight(){
+  if (busy) return;
+  $('fW').value = fmt(curWeight());
+  $('dw').showModal();
+}
+$('wCancel').onclick = () => $('dw').close();
+$('wOk').onclick = async () => {
+  const w = parseFloat($('fW').value);
+  if (!(w >= 40 && w <= 500)){ alert('填一个斤数，比如 138.5'); return; }
+  $('dw').close();
+  busy = true;
+  const from = ratio(), t = today();
+  state.weights = state.weights.filter(x => x.d !== t);
+  state.weights.push({d: t, w});
+  await save();
+  const to = ratio();
+  if (to > from) await flashTo(from, to);       // 瘦了：先看一眼终点，再落到新位置
+  else if (to < from) await animate(from, to, 1500);
+  busy = false;
+  render();
+};
+
+/* ---------- 设置第一步：照片和体重 ---------- */
 function openDlg(mode){
   $('fNow').value = '';
-  $('fTarget').value = String(state && mode === 'edit' ? state.target : 30);
-  $('fAmount').value = String(state && mode === 'edit' ? state.amount : 0.24);
-  $('dTitle').textContent = mode === 'edit' ? '换照片 / 重新框身体' : (mode === 'next' ? '开始下一轮' : '开始');
-  $('dNote').textContent = mode === 'edit' ? '不换照片就留空，进度不会丢。'
-    : (mode === 'next' ? '放一张现在的你，从 0 重新开始。' : '');
+  $('fStart').value = fmt(state ? state.start : 140);
+  $('fGoal').value = fmt(state ? state.goal : 110);
+  $('fAmount').value = String(state ? state.amount : 0.24);
+  $('dTitle').textContent = mode === 'edit' ? '修改' : '开始';
+  $('dNote').textContent = mode === 'edit' ? '不换照片就留空。体重记录和练的记录都不会丢。' : '';
   $('dlg').dataset.mode = mode;
   $('dlg').showModal();
 }
@@ -367,13 +406,15 @@ $('dCancel').onclick = () => $('dlg').close();
 $('dOk').onclick = async () => {
   const mode = $('dlg').dataset.mode;
   const f = $('fNow').files[0];
+  const start = parseFloat($('fStart').value), goal = parseFloat($('fGoal').value);
   if (!f && mode !== 'edit'){ alert('先选一张照片'); return; }
+  if (!(start > 0 && goal > 0 && start > goal)){ alert('现在的体重要比目标体重大'); return; }
   try{
     const now = f ? await readImage(f) : state.now;
     draft = {
-      mode, now,
+      mode, now, start, goal,
       box: (!f && state) ? {...state.box} : {...DEFAULT_BOX},
-      amount: +$('fAmount').value, target: +$('fTarget').value
+      amount: +$('fAmount').value
     };
     await prepare(now);
     $('dlg').close();
@@ -390,7 +431,7 @@ function renderAdjust(){
       <canvas id="cv"></canvas>
       <div class="box" id="box"><b class="h tl" data-h="tl"></b><b class="h br" data-h="br"></b></div>
     </div>
-    <button class="main-btn second" id="pv">看看瘦完的样子</button>
+    <button class="main-btn second" id="pv">看看 ${fmt(draft.goal)} 斤的样子</button>
     <button class="main-btn" onclick="confirmAdjust()">就这样，开始</button>
     <button class="link" onclick="cancelAdjust()">取消</button>`;
   placeBox();
@@ -398,7 +439,7 @@ function renderAdjust(){
   $('pv').onclick = () => {
     preview = !preview;
     $('box').style.display = preview ? 'none' : '';
-    $('pv').textContent = preview ? '回到原图，继续调框' : '看看瘦完的样子';
+    $('pv').textContent = preview ? '回到原图，继续调框' : `看看 ${fmt(draft.goal)} 斤的样子`;
     draw($('cv'), preview ? 1 : 0, draft.box, draft.amount);
   };
   document.querySelectorAll('.h').forEach(el => {
@@ -425,10 +466,9 @@ function placeBox(){
 async function confirmAdjust(){
   const keep = draft.mode === 'edit' && state;
   state = {
-    now: draft.now, box: draft.box, amount: draft.amount, target: draft.target,
-    log: keep ? state.log : [], doneAt: null
+    now: draft.now, box: draft.box, amount: draft.amount, start: draft.start, goal: draft.goal,
+    weights: keep ? state.weights : [], log: keep ? state.log : []
   };
-  if (keep && calc().pts >= state.target) state.doneAt = today();
   await save();
   draft = null; view = 'main';
   render();
